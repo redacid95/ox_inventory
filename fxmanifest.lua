@@ -7,35 +7,33 @@ game         'gta5'
 --[[ Resource Information ]]--
 name         'ox_inventory'
 author       'Overextended'
-version      '2.1.6'
+version      '2.4.2'
 repository   'https://github.com/overextended/ox_inventory'
 description  'Slot-based inventory with metadata'
 
 --[[ Manifest ]]--
 dependencies {
-	'/server:5104',
+	'/server:5181',
 	'/onesync',
 	'oxmysql',
-	'es_extended',
 	'pe-lualib'
 }
 
 shared_scripts {
 	'@pe-lualib/init.lua',
-	'config.lua'
+	'modules/init.lua'
 }
 
-server_script 'modules/player/server.lua'
+server_script 'modules/bridge/server.lua'
 
 shared_scripts {
-	'modules/init.lua',
 	'modules/**/shared.lua'
 }
 
 client_scripts {
 	'modules/items/client.lua',
 	'modules/utils/client.lua',
-	'modules/player/client.lua',
+	'modules/bridge/client.lua',
 	'modules/interface/client.lua',
 	'modules/shops/client.lua',
 	'modules/inventory/client.lua',

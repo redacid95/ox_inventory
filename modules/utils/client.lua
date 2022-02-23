@@ -18,10 +18,10 @@ function Utils.PlayAnimAdvanced(wait, dict, name, posX, posY, posZ, rotX, rotY, 
 	end)
 end
 
-function Utils.Raycast()
+function Utils.Raycast(flag)
 	local playerCoords = GetEntityCoords(PlayerData.ped)
 	local plyOffset = GetOffsetFromEntityInWorldCoords(PlayerData.ped, 0.0, 2.2, -0.05)
-	local rayHandle = StartShapeTestCapsule(playerCoords.x, playerCoords.y, playerCoords.z, plyOffset.x, plyOffset.y, plyOffset.z, 2.2, 30, PlayerData.ped)
+	local rayHandle = StartShapeTestCapsule(playerCoords.x, playerCoords.y, playerCoords.z, plyOffset.x, plyOffset.y, plyOffset.z, 2.2, flag or 30, PlayerData.ped)
 	while true do
 		Wait(0)
 		local result, _, _, _, entityHit = GetShapeTestResult(rayHandle)
@@ -69,14 +69,19 @@ function Utils.Disarm(currentWeapon, newSlot)
 
 		if not newSlot then
 			ClearPedSecondaryTask(PlayerData.ped)
-			local sleep = (PlayerData.job.name == ox.police and (GetWeapontypeGroup(currentWeapon.hash) == 416676503 or GetWeapontypeGroup(currentWeapon.hash) == 690389602)) and 450 or 1400
+			local sleep = (client.hasGroup(shared.police) and (GetWeapontypeGroup(currentWeapon.hash) == 416676503 or GetWeapontypeGroup(currentWeapon.hash) == 690389602)) and 450 or 1400
 			local coords = GetEntityCoords(PlayerData.ped, true)
-			Utils.PlayAnimAdvanced(sleep, (sleep == 450 and 'reaction@intimidation@cop@unarmed' or 'reaction@intimidation@1h'), 'outro', coords.x, coords.y, coords.z, 0, 0, GetEntityHeading(PlayerData.ped), 8.0, 3.0, -1, 50, 0)
-			Wait(sleep)
-			Utils.ItemNotify({currentWeapon.label, currentWeapon.name, ox.locale('holstered')})
+			if currentWeapon.name == 'WEAPON_SWITCHBLADE' then
+				Utils.PlayAnimAdvanced(sleep, 'anim@melee@switchblade@holster', 'holster', coords.x, coords.y, coords.z, 0, 0, GetEntityHeading(PlayerData.ped), 8.0, 3.0, -1, 48, 0)
+				Wait(600)
+			else
+				Utils.PlayAnimAdvanced(sleep, (sleep == 450 and 'reaction@intimidation@cop@unarmed' or 'reaction@intimidation@1h'), 'outro', coords.x, coords.y, coords.z, 0, 0, GetEntityHeading(PlayerData.ped), 8.0, 3.0, -1, 50, 0)
+				Wait(sleep)
+			end
+			Utils.ItemNotify({currentWeapon.label, currentWeapon.name, shared.locale('holstered')})
 		end
 
-		RemoveWeaponFromPed(PlayerData.ped, currentWeapon.hash)
+		RemoveAllPedWeapons(PlayerData.ped, true)
 
 		if newSlot then
 			TriggerServerEvent('ox_inventory:updateWeapon', ammo and 'ammo' or 'melee', ammo or currentWeapon.melee, newSlot)
@@ -90,7 +95,7 @@ end
 function Utils.ClearWeapons(currentWeapon)
 	currentWeapon = Utils.Disarm(currentWeapon)
 	RemoveAllPedWeapons(PlayerData.ped, true)
-	if ox.parachute then
+	if client.parachute then
 		local chute = `GADGET_PARACHUTE`
 		GiveWeaponToPed(PlayerData.ped, chute, 0, true, false)
 		SetPedGadget(PlayerData.ped, chute, true)
@@ -101,5 +106,16 @@ function Utils.DeleteObject(obj)
 	SetEntityAsMissionEntity(obj, false, true)
 	DeleteObject(obj)
 end
+
+-- Enables the weapon wheel, but disables the use of inventory items
+-- Mostly used for weaponised vehicles, though could be called for "minigames"
+function Utils.WeaponWheel(state)
+	client.weaponWheel = state
+	SetWeaponsNoAutoswap(not state)
+	SetWeaponsNoAutoreload(not state)
+	SetPedCanSwitchWeapon(PlayerData.ped, state)
+	SetPedEnableWeaponBlocking(PlayerData.ped, not state)
+end
+exports('weaponWheel', Utils.WeaponWheel)
 
 client.utils = Utils

@@ -1,9 +1,21 @@
 local Items = {}
-local ItemList = items()
+local ItemList = shared.items
 
 -- Slot count and maximum weight for containers
+-- Whitelist and blacklist: ['item_name'] = true
 Items.containers = {
-	['paperbag'] = {5, 1000}
+	['paperbag'] = {
+		size = {5, 1000},
+		blacklist = {
+			['testburger'] = true -- No burgers!
+		}
+	},
+	['pizzabox'] = {
+		size = {1, 1000},
+		whitelist = {
+			['pizza'] = true -- Pizza box for pizza only
+		}
+	}
 }
 
 -- Possible metadata when creating garbage
@@ -39,30 +51,27 @@ setmetatable(Items, {
 })
 
 CreateThread(function()
-	local OneSync = GetConvar('onesync_enabled', false) == 'true'
-	local Infinity = GetConvar('onesync_enableInfinity', false) == 'true'
-	if not OneSync and not Infinity then return error('OneSync is not enabled on this server - refer to the documentation')
-	elseif Infinity then ox.info('Server is running OneSync Infinity') else ox.info('Server is running OneSync Legacy') end
-	local items = MySQL.query.await('SELECT * FROM items')
-	if items then
-		local query = {}
-		for i=1, #items do
-			local v = items[i]
-			if i == 1 then query[i] = ('DELETE FROM items WHERE name = "%s"'):format(v.name) else query[i] = ('OR name = "%s"'):format(v.name) end
-			v.name = v.name
-			v.label = v.label
-			v.close = v.closeonuse or true
-			v.stack = v.stackable or true
-			v.description = (v.description or '')
-			v.weight = v.weight or 0
-		end
-		if next(query) then
-			query = table.concat(query, ' ')
-			local sql = LoadResourceFile(ox.resource, 'setup/dump.sql')
-			if not sql then error('Unable to load "setup/dump.sql', 1) end
-			local file = {string.strtrim(LoadResourceFile(ox.resource, 'data/items.lua'))}
-			file[1] = file[1]:gsub('}$', '')
-			local dump = {'INSERT INTO `items` (`name`, `label`, `weight`, `description`) VALUES'}
+	if shared.framework == 'esx' then
+		local items = MySQL.query.await('SELECT * FROM items')
+		if items then
+			local query = {}
+			for i = 1, #items do
+				local v = items[i]
+				if i == 1 then query[i] = ('DELETE FROM items WHERE name = "%s"'):format(v.name) else query[i] = ('OR name = "%s"'):format(v.name) end
+				v.name = v.name
+				v.label = v.label
+				v.close = v.closeonuse or true
+				v.stack = v.stackable or true
+				v.description = (v.description or '')
+				v.weight = v.weight or 0
+			end
+			if next(query) then
+				query = table.concat(query, ' ')
+				local sql = LoadResourceFile(shared.resource, 'setup/dump.sql')
+				if not sql then error('Unable to load "setup/dump.sql', 1) end
+				local file = {string.strtrim(LoadResourceFile(shared.resource, 'data/items.lua'))}
+				file[1] = file[1]:gsub('}$', '')
+				local dump = {'INSERT INTO `items` (`name`, `label`, `weight`, `description`) VALUES'}
 local itemFormat = [[
 
 	['%s'] = {
@@ -73,61 +82,62 @@ local itemFormat = [[
 		description = '%s'
 	},
 ]]
-			local saveSql = false
-			local dumpSize = #dump
-			local fileSize = #file
-			for _, v in pairs(items) do
-				local formatName = v.name:gsub("'", "\\'"):lower()
-				if not ItemList[formatName] then
-					if not saveSql then saveSql = true end
-					dumpSize += 1
-					fileSize += 1
-					dump[dumpSize] = ('\n	("%s", "%s", %s, "%s")'):format(v.name, v.label, v.weight, v.description)
-					if dumpSize ~= 2 then dump[dumpSize] = ','..dump[dumpSize] end
-					file[fileSize] = (itemFormat):format(formatName, v.label:gsub("'", "\\'"):lower(), v.weight, v.stack, v.close, v.description:gsub("'", "\\'"))
-					ItemList[formatName] = v
+				local saveSql = false
+				local dumpSize = #dump
+				local fileSize = #file
+				for _, v in pairs(items) do
+					local formatName = v.name:gsub("'", "\\'"):lower()
+					if not ItemList[formatName] then
+						if not saveSql then saveSql = true end
+						dumpSize += 1
+						fileSize += 1
+						dump[dumpSize] = ('\n	("%s", "%s", %s, "%s")'):format(v.name, v.label, v.weight, v.description)
+						if dumpSize ~= 2 then dump[dumpSize] = ','..dump[dumpSize] end
+						file[fileSize] = (itemFormat):format(formatName, v.label:gsub("'", "\\'"):lower(), v.weight, v.stack, v.close, v.description:gsub("'", "\\'"))
+						ItemList[formatName] = v
+					end
 				end
-			end
-			dump[dumpSize+1] = ';\n\n'
-			file[fileSize+1] = '}'
-			if saveSql then
-				dump = ('%s%s'):format(sql, table.concat(dump))
-				SaveResourceFile(ox.resource, 'setup/dump.sql', dump, -1)
-			end
-			SaveResourceFile(ox.resource, 'data/items.lua', table.concat(file), -1)
-			MySQL.update(query, function(result)
-				if result > 0 then
-					ox.info('Removed '..result..' items from the database')
+				dump[dumpSize+1] = ';\n\n'
+				file[fileSize+1] = '}'
+				if saveSql then
+					dump = ('%s%s'):format(sql, table.concat(dump))
+					SaveResourceFile(shared.resource, 'setup/dump.sql', dump, -1)
 				end
-			end)
-			if items then ox.info(#items..' items have been copied from the database') end
+				SaveResourceFile(shared.resource, 'data/items.lua', table.concat(file), -1)
+				MySQL.update(query, function(result)
+					if result > 0 then
+						shared.info('Removed '..result..' items from the database')
+					end
+				end)
+				if items then shared.info(#items..' items have been copied from the database') end
+			end
 		end
 	end
 
-	if ox.clearstashes then
-		MySQL.query.await('DELETE FROM ox_inventory WHERE lastupdated < (NOW() - INTERVAL '..ox.clearstashes..') OR data = "[]"')
+	if server.clearstashes then
+		MySQL.query.await('DELETE FROM ox_inventory WHERE lastupdated < (NOW() - INTERVAL '..server.clearstashes..') OR data = "[]"')
 	end
 
 	local count = 0
 	Wait(2000)
-	if ox.UsableItemsCallbacks then
-		ox.UsableItemsCallbacks = ox.UsableItemsCallbacks()
-	else ox.UsableItemsCallbacks = {} end
+	if server.UsableItemsCallbacks then
+		server.UsableItemsCallbacks = server.UsableItemsCallbacks()
+	else server.UsableItemsCallbacks = {} end
 
 	for _, v in pairs(ItemList) do
-		if v.consume and v.consume > 0 and ox.UsableItemsCallbacks[v.name] then ox.UsableItemsCallbacks[v.name] = nil end
+		if v.consume and v.consume > 0 and server.UsableItemsCallbacks[v.name] then server.UsableItemsCallbacks[v.name] = nil end
 		count += 1
 	end
 
 	TriggerEvent('ox_inventory:itemList', ItemList)
-	ox.info('Inventory has loaded '..count..' items')
+	shared.info('Inventory has loaded '..count..' items')
 	collectgarbage('collect') -- clean up from initialisation
-	ox.ready = true
+	shared.ready = true
 	--[[local ignore = {[0] = '?', [`WEAPON_UNARMED`] = 'unarmed', [966099553] = 'shovel'}
 	while true do
 		Wait(45000)
 		local Players = ESX.GetPlayers()
-		for i=1, #Players do
+		for i = 1, #Players do
 			local i = Players[i]
 			--if not IsPlayerAceAllowed(i, 'command.refresh') then
 				local inv, ped = Inventory(i), GetPlayerPed(i)
@@ -143,12 +153,12 @@ local itemFormat = [[
 						end
 						if count == 0 then
 							-- does not own weapon; player may be cheating
-							ox.warning(inv.name, 'is using an invalid weapon (', curWeapon.name, ')')
+							shared.warning(inv.name, 'is using an invalid weapon (', curWeapon.name, ')')
 							--DropPlayer(i)
 						end
 					else
 						-- weapon doesn't exist; player may be cheating
-						ox.warning(inv.name, 'is using an unknown weapon (', hash, ')')
+						shared.warning(inv.name, 'is using an unknown weapon (', hash, ')')
 						--DropPlayer(i)
 					end
 				end
@@ -161,7 +171,7 @@ end)
 local function GenerateText(num)
 	local str
 	repeat str = {}
-		for i=1, num do str[i] = string.char(math.random(65, 90)) end
+		for i = 1, num do str[i] = string.char(math.random(65, 90)) end
 		str = table.concat(str)
 	until str ~= 'POL' and str ~= 'EMS'
 	return str
@@ -184,32 +194,28 @@ function Items.Metadata(inv, item, metadata, count)
 	if not isWeapon then metadata = not metadata and {} or type(metadata) == 'string' and {type=metadata} or metadata end
 
 	if isWeapon then
-		if not item.ammoname then
-			metadata = {}
-			if not item.throwable then count, metadata.durability = 1, 100 end
-		else
-			count = 1
-			if type(metadata) ~= 'table' then metadata = {} end
-			if not metadata.durability then metadata.durability = 100 end
-			if not metadata.ammo and item.ammoname then metadata.ammo = 0 end
-			if not metadata.components then metadata.components = {} end
-			if metadata.registered ~= false then
-				metadata.registered = type(metadata.registered) == 'string' and metadata.registered or inv.name
-				metadata.serial = GenerateSerial(metadata.serial)
-			end
+		if type(metadata) ~= 'table' then metadata = {} end
+		if not metadata.durability then metadata.durability = 100 end
+		if not metadata.ammo and item.ammoname then metadata.ammo = 0 end
+		if not metadata.components then metadata.components = {} end
+
+		if metadata.registered ~= false and metadata.ammo then
+			metadata.registered = type(metadata.registered) == 'string' and metadata.registered or inv.player.name
+			metadata.serial = GenerateSerial(metadata.serial)
 		end
 	else
 		local container = Items.containers[item.name]
+
 		if container then
 			count = 1
 			metadata.container = metadata.container or GenerateText(3)..os.time()
-			metadata.size = container
+			metadata.size = container.size
 		elseif item.name == 'identification' then
 			count = 1
 			if next(metadata) == nil then
 				metadata = {
 					type = inv.player.name,
-					description = ox.locale('identification', (inv.player.sex) and ox.locale('male') or ox.locale('female'), inv.player.dateofbirth)
+					description = shared.locale('identification', (inv.player.sex) and shared.locale('male') or shared.locale('female'), inv.player.dateofbirth)
 				}
 			end
 		elseif item.name == 'garbage' then
@@ -224,7 +230,50 @@ function Items.Metadata(inv, item, metadata, count)
 			if durability then metadata.durability = os.time()+(durability * 60) metadata.degrade = durability end
 		end
 	end
+
+	if count > 1 and not item.stack then
+		count = 1
+	end
+
 	return metadata, count
+end
+
+function Items.CheckMetadata(metadata, item, name)
+	if metadata.bag then
+		metadata.container = metadata.bag
+		metadata.size = ItemList.containers[name]?.size or {5, 1000}
+		metadata.bag = nil
+	end
+
+	if metadata.durability and not item.durability and not item.degrade and not name:find('WEAPON_') then
+		metadata.durability = nil
+	end
+
+	if metadata.components then
+		if table.type(metadata.components) == 'array' then
+			for i = 1, #metadata.components do
+				if not ItemList[metadata.components[i]] then
+					table.remove(metadata.components, i)
+				end
+			end
+		else
+			local components = {}
+			local size = 0
+			for _, component in pairs(metadata.components) do
+				if component and ItemList[component] then
+					size += 1
+					components[size] = component
+				end
+			end
+			metadata.components = components
+		end
+	end
+
+	if metadata.serial and item.name:find('WEAPON_') and not item.ammoname then
+		metadata.serial = nil
+	end
+
+	return metadata
 end
 
 local function Item(name, cb)
