@@ -20,6 +20,7 @@ function server.setPlayerData(player)
 	end
 
 	return {
+		source = player.source,
 		name = player.name,
 		groups = player.groups or {},
 		sex = player.sex,
@@ -27,16 +28,11 @@ function server.setPlayerData(player)
 	}
 end
 
-if shared.framework == 'ox' then
-	function server.getInventory(identifier)
-		local inventory = MySQL.prepare.await('SELECT inventory FROM characters WHERE charid = ?', { identifier })
-		return inventory and json.decode(inventory)
-	end
-elseif shared.framework == 'esx' then
+if shared.framework == 'esx' then
 	local ESX = exports['es_extended']:getSharedObject()
 
 	if ESX.CreatePickup then
-		error('Ox Inventory requires a modified version of ESX, refer to the documentation.')
+		error('ox_inventory requires a ESX Legacy v1.6.0 or above, refer to the documentation.')
 	end
 
 	ESX = {
@@ -61,16 +57,12 @@ elseif shared.framework == 'esx' then
 		}
 
 		return {
+			source = player.source,
 			name = player.name,
 			groups = groups,
 			sex = player.sex or player.variables.sex,
 			dateofbirth = player.dateofbirth or player.variables.dateofbirth,
 		}
-	end
-
-	function server.getInventory(identifier)
-		local inventory = MySQL.prepare.await('SELECT inventory FROM users WHERE identifier = ?', { identifier })
-		return inventory and json.decode(inventory)
 	end
 
 	RegisterServerEvent('ox_inventory:requestPlayerInventory', function()

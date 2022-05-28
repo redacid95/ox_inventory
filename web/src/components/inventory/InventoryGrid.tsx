@@ -10,10 +10,24 @@ import InventoryContext from './InventoryContext';
 import { getTotalWeight } from '../../helpers';
 import { createPortal } from 'react-dom';
 import useNuiEvent from '../../hooks/useNuiEvent';
+import useKeyPress from '../../hooks/useKeyPress';
+import { setClipboard } from '../../utils/setClipboard';
+import { debugData } from '../../utils/debugData';
+
+// debugData([
+//   {
+//     action: 'displayMetadata',
+//     data: { ['mustard']: 'Mustard', ['ketchup']: 'Ketchup' },
+//   },
+// ]);
 
 const InventoryGrid: React.FC<{ inventory: Inventory }> = ({ inventory }) => {
   const [currentItem, setCurrentItem] = React.useState<SlotWithItem>();
   const [contextVisible, setContextVisible] = React.useState<boolean>(false);
+  const [additionalMetadata, setAdditionalMetadata] = React.useState<{ [key: string]: any }>({});
+
+  const isControlPressed = useKeyPress('Control');
+  const isCopyPressed = useKeyPress('c');
 
   const weight = React.useMemo(
     () => (inventory.maxWeight !== undefined ? getTotalWeight(inventory.items) : 0),
@@ -31,10 +45,19 @@ const InventoryGrid: React.FC<{ inventory: Inventory }> = ({ inventory }) => {
     setCurrentItem(undefined);
   }, [contextVisible]);
 
+  useEffect(() => {
+    if (!currentItem || !isControlPressed || !isCopyPressed) return;
+    currentItem?.metadata?.serial && setClipboard(currentItem.metadata.serial);
+  }, [isControlPressed, isCopyPressed]);
+
   useNuiEvent('setupInventory', () => {
     setCurrentItem(undefined);
     ReactTooltip.rebuild();
   });
+
+  useNuiEvent<{ [key: string]: any }>('displayMetadata', (data) =>
+    setAdditionalMetadata((oldMetadata) => ({ ...oldMetadata, ...data }))
+  );
 
   return (
     <>
@@ -121,6 +144,15 @@ const InventoryGrid: React.FC<{ inventory: Inventory }> = ({ inventory }) => {
                   {Locale.ui_tint}: {currentItem.metadata.weapontint}
                 </p>
               )}
+              {Object.keys(additionalMetadata).map((data: string, index: number) => (
+                <React.Fragment key={`metadata-${index}`}>
+                  {currentItem.metadata && currentItem.metadata[data] && (
+                    <p>
+                      {additionalMetadata[data]}: {currentItem.metadata[data]}
+                    </p>
+                  )}
+                </React.Fragment>
+              ))}
             </>
           </ReactTooltip>
         )}
